@@ -7,6 +7,9 @@ import React, { useState, useEffect } from 'react';
 import { Party, PartyType, EntityStatus, VerificationStatus } from '../../types/k01.js';
 import { useI18n } from '../../lib/i18n.js';
 import { X, AlertCircle, ShieldAlert, Check } from 'lucide-react';
+import { IdentifierField } from '../ui/CanonicalFields.js';
+import { DidarDateField } from '../ui/DidarDateField.js';
+import { normalizeMobile, normalizeNationalId, normalizeNumericText } from '../../lib/input-normalization.js';
 
 interface PersonFormModalProps {
   isOpen: boolean;
@@ -21,7 +24,7 @@ export const PersonFormModal: React.FC<PersonFormModalProps> = ({
   onSubmit,
   initialData
 }) => {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
 
   // Basic Identity
   const [partyType, setPartyType] = useState<PartyType>('consumer');
@@ -140,7 +143,8 @@ export const PersonFormModal: React.FC<PersonFormModalProps> = ({
       return;
     }
 
-    if (!mobile.trim() || mobile.replace(/\D/g, '').length < 10) {
+    const canonicalMobile = normalizeMobile(mobile);
+    if (!/^09\d{9}$/.test(canonicalMobile)) {
       setError('شماره همراه معتبر الزامی است.');
       return;
     }
@@ -172,8 +176,8 @@ export const PersonFormModal: React.FC<PersonFormModalProps> = ({
       partyType,
       firstName: firstName.trim(),
       lastName: lastName.trim(),
-      nationalId: nationalId.trim() || undefined,
-      mobile: mobile.trim(),
+      nationalId: nationalId.trim() ? normalizeNationalId(nationalId) : undefined,
+      mobile: canonicalMobile,
       email: email.trim() || undefined,
       status,
       verificationStatus,
@@ -326,26 +330,24 @@ export const PersonFormModal: React.FC<PersonFormModalProps> = ({
 
               <div>
                 <label className="block text-xs text-[#9E9EA8] mb-1">{t.mobile} *</label>
-                <input
-                  type="text"
+                <IdentifierField
                   required
                   value={mobile}
-                  onChange={e => setMobile(e.target.value)}
+                  onChange={setMobile}
                   placeholder="مثال: 09121112233"
+                  maxLength={11}
                   className="w-full bg-[#181822] border border-[#2D2D3E] focus:border-[#C8A951] rounded-xl px-3 py-2 text-xs text-[#EDEDED] outline-none font-mono text-left"
-                  dir="ltr"
                 />
               </div>
 
               <div>
                 <label className="block text-xs text-[#9E9EA8] mb-1">{t.nationalId}</label>
-                <input
-                  type="text"
+                <IdentifierField
                   value={nationalId}
-                  onChange={e => setNationalId(e.target.value)}
+                  onChange={setNationalId}
                   placeholder="۱۰ رقم کد ملی"
+                  maxLength={10}
                   className="w-full bg-[#181822] border border-[#2D2D3E] focus:border-[#C8A951] rounded-xl px-3 py-2 text-xs text-[#EDEDED] outline-none font-mono text-left"
-                  dir="ltr"
                 />
               </div>
 
@@ -410,10 +412,10 @@ export const PersonFormModal: React.FC<PersonFormModalProps> = ({
                 <div>
                   <label className="block text-xs text-[#9E9EA8] mb-1">درصد کارمزد فروش (%)</label>
                   <input
-                    type="number"
-                    step="0.1"
+                    type="text"
+                    inputMode="decimal"
                     value={commissionRate}
-                    onChange={e => setCommissionRate(parseFloat(e.target.value))}
+                    onChange={e => setCommissionRate(Number(normalizeNumericText(e.target.value, { decimal: true })) || 0)}
                     className="w-full bg-[#151410] border border-[#3E3825] focus:border-[#C8A951] rounded-xl px-3 py-2 text-xs text-[#EDEDED] outline-none font-mono"
                   />
                 </div>
@@ -465,11 +467,10 @@ export const PersonFormModal: React.FC<PersonFormModalProps> = ({
 
                 <div>
                   <label className="block text-xs text-[#9E9EA8] mb-1">تاریخ شروع همکاری</label>
-                  <input
-                    type="date"
+                  <DidarDateField
                     value={startDate}
-                    onChange={e => setStartDate(e.target.value)}
-                    className="w-full bg-[#101318] border border-[#232F3E] focus:border-[#65A7E5] rounded-xl px-3 py-2 text-xs text-[#EDEDED] outline-none font-mono"
+                    onChange={setStartDate}
+                    locale={locale}
                   />
                 </div>
               </div>
