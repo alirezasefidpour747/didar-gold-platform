@@ -439,6 +439,103 @@ export const authOtpCodes = pgTable(
 );
 
 // ==========================================
+// 3B. EXTERNAL IDENTITY & MFA
+// ==========================================
+
+export const authExternalIdentities = pgTable(
+  'auth_external_identities',
+  {
+    id: varchar('id', { length: 128 }).primaryKey(),
+    partyId: varchar('party_id', { length: 128 })
+      .notNull()
+      .references(() => k01Persons.id, { onDelete: 'cascade' }),
+    provider: varchar('provider', { length: 32 }).notNull(),
+    providerSubject: varchar('provider_subject', { length: 255 }).notNull(),
+    email: varchar('email', { length: 255 }),
+    emailVerified: boolean('email_verified').notNull().default(false),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex('idx_auth_external_provider_subject').on(table.provider, table.providerSubject),
+    uniqueIndex('idx_auth_external_party_provider').on(table.partyId, table.provider),
+    index('idx_auth_external_party').on(table.partyId),
+  ]
+);
+
+export const authOauthStates = pgTable(
+  'auth_oauth_states',
+  {
+    id: varchar('id', { length: 128 }).primaryKey(),
+    stateHash: varchar('state_hash', { length: 128 }).notNull().unique(),
+    provider: varchar('provider', { length: 32 }).notNull(),
+    codeVerifier: varchar('code_verifier', { length: 255 }).notNull(),
+    returnUrl: text('return_url').notNull(),
+    partyId: varchar('party_id', { length: 128 }).references(() => k01Persons.id, { onDelete: 'cascade' }),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    consumedAt: timestamp('consumed_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('idx_auth_oauth_state_expiry').on(table.expiresAt),
+  ]
+);
+
+export const authOauthTickets = pgTable(
+  'auth_oauth_tickets',
+  {
+    id: varchar('id', { length: 128 }).primaryKey(),
+    ticketHash: varchar('ticket_hash', { length: 128 }).notNull().unique(),
+    partyId: varchar('party_id', { length: 128 })
+      .notNull()
+      .references(() => k01Persons.id, { onDelete: 'cascade' }),
+    provider: varchar('provider', { length: 32 }).notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    consumedAt: timestamp('consumed_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('idx_auth_oauth_ticket_party').on(table.partyId),
+  ]
+);
+
+export const authTotpFactors = pgTable(
+  'auth_totp_factors',
+  {
+    partyId: varchar('party_id', { length: 128 })
+      .primaryKey()
+      .references(() => k01Persons.id, { onDelete: 'cascade' }),
+    secretCiphertext: text('secret_ciphertext').notNull(),
+    secretIv: varchar('secret_iv', { length: 64 }).notNull(),
+    secretAuthTag: varchar('secret_auth_tag', { length: 64 }).notNull(),
+    status: varchar('status', { length: 32 }).notNull().default('pending'),
+    confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('idx_auth_totp_status').on(table.status),
+  ]
+);
+
+export const authRecoveryCodes = pgTable(
+  'auth_recovery_codes',
+  {
+    id: varchar('id', { length: 128 }).primaryKey(),
+    partyId: varchar('party_id', { length: 128 })
+      .notNull()
+      .references(() => k01Persons.id, { onDelete: 'cascade' }),
+    codeHash: varchar('code_hash', { length: 128 }).notNull(),
+    usedAt: timestamp('used_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('idx_auth_recovery_party').on(table.partyId),
+    uniqueIndex('idx_auth_recovery_party_code').on(table.partyId, table.codeHash),
+  ]
+);
+
+// ==========================================
 // 4. P01: PRODUCT CORE & TAXONOMY
 // ==========================================
 
