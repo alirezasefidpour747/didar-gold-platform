@@ -23,6 +23,7 @@
     "test:p01": "vitest run tests/p01-product.test.ts",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "setup:admin": "tsx scripts/setup-admin.ts",
+    "repair:admin-identity": "tsx scripts/repair-admin-identity.ts",
     "db:migrate": "tsx server/db/migrate.ts",
     "db:import": "tsx server/db/import.ts",
     "db:status": "tsx scripts/db-status.ts",
