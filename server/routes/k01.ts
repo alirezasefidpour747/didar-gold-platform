@@ -8,6 +8,7 @@ import { Router, Request, Response } from 'express';
 import { K01Repository } from '../repositories/k01.repository.js';
 import { checkDatabaseHealth, createIndependentBackup } from '../lib/database.js';
 import { AuditEvent } from '../../src/types/k01.js';
+import { normalizeMobile, normalizeNationalId, jalaliToIsoDate, normalizeDigits } from '../../src/lib/input-normalization.js';
 
 export const k01Router = Router();
 
@@ -74,7 +75,7 @@ k01Router.post('/', async (req: Request, res: Response) => {
     }
 
     if (resource === 'person') {
-      const normalizedMobile = (payload.mobile || '').replace(/\D/g, '');
+      const normalizedMobile = normalizeMobile(payload.mobile || '');
       if (!normalizedMobile || normalizedMobile.length < 10) {
         return res.status(400).json({
           error: { code: 'VALIDATION_FAILED', message: 'شماره همراه معتبر الزامی است.' },
@@ -105,7 +106,7 @@ k01Router.post('/', async (req: Request, res: Response) => {
           partyType: payload.partyType || 'consumer',
           firstName: payload.firstName,
           lastName: payload.lastName,
-          nationalId: payload.nationalId,
+          nationalId: payload.nationalId ? normalizeNationalId(payload.nationalId) : undefined,
           mobile: normalizedMobile,
           email: payload.email,
           status: payload.status || 'pending',
@@ -292,6 +293,8 @@ k01Router.patch('/:resource/:id', async (req: Request, res: Response) => {
     const now = new Date().toISOString();
 
     if (resource === 'person' || resource === 'persons') {
+      if (updates.mobile !== undefined) updates.mobile = normalizeMobile(String(updates.mobile));
+      if (updates.nationalId !== undefined && updates.nationalId !== null) updates.nationalId = normalizeNationalId(String(updates.nationalId));
       const audit: AuditEvent = {
         id: `audit-${Date.now()}`,
         actorId: 'actor-admin',
@@ -324,6 +327,14 @@ k01Router.patch('/:resource/:id', async (req: Request, res: Response) => {
     }
 
     if (resource === 'membership' || resource === 'memberships') {
+      for (const key of ['validFrom', 'validTo'] as const) {
+        const raw = updates[key];
+        if (raw && typeof raw === 'string' && raw.includes('/')) {
+          const iso = jalaliToIsoDate(normalizeDigits(raw));
+          if (!iso) return res.status(422).json({ error: { code: 'VALIDATION_FAILED', message: `تاریخ ${key} معتبر نیست.` } });
+          updates[key] = iso;
+        }
+      }
       const audit: AuditEvent = {
         id: `audit-${Date.now()}`,
         actorId: 'actor-admin',
