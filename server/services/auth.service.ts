@@ -383,6 +383,10 @@ export class AuthService {
 
       const cred = creds[0];
 
+      if (cred.status !== 'active') {
+        throw new Error('ACCOUNT_INACTIVE: اعتبارنامه ورود این حساب غیرفعال است.');
+      }
+
       if (cred.lockedUntil && new Date(cred.lockedUntil) > new Date()) {
         const remainingMinutes = Math.ceil((new Date(cred.lockedUntil).getTime() - Date.now()) / 60000);
         throw new Error(`ACCOUNT_LOCKED: حساب کاربری به دلیل تلاش‌های ناموفق مکرر تا ${remainingMinutes} دقیقه دیگر قفل است.`);
@@ -403,10 +407,11 @@ export class AuthService {
         throw new Error('INVALID_CREDENTIALS: نام کاربری یا رمز عبور اشتباه است.');
       }
 
-      // Reset failed attempts on success
+      // Reset failed-attempt counters after password verification.
+      // lastLoginAt is recorded only after any required MFA succeeds.
       await db
         .update(authCredentials)
-        .set({ failedAttempts: 0, lockedUntil: null, lastLoginAt: new Date(), updatedAt: new Date() })
+        .set({ failedAttempts: 0, lockedUntil: null, updatedAt: new Date() })
         .where(eq(authCredentials.partyId, person.id));
     } else if (otp) {
       // Verify OTP
@@ -438,6 +443,10 @@ export class AuthService {
     // SMS OTP remains an independent approved authentication method.
     if (password) {
       await MfaService.verifyLoginFactor(person.id, totp, recoveryCode);
+      await db
+        .update(authCredentials)
+        .set({ lastLoginAt: new Date(), updatedAt: new Date() })
+        .where(eq(authCredentials.partyId, person.id));
     }
 
     // Resolve Active Organization
