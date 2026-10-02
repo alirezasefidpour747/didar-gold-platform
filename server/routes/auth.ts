@@ -9,7 +9,7 @@ import { AuthService } from '../services/auth.service.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { RbacService } from '../storage-rbac.js';
 import { MfaService } from '../services/mfa.service.js';
-import { OAuthService, ExternalProvider } from '../services/oauth.service.js';
+import { OAuthService, type ExternalProvider } from '../services/oauth.service.js';
 
 export const authRouter = Router();
 
