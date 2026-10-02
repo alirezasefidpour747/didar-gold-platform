@@ -6,6 +6,7 @@ import {
   authOauthStates,
   authOauthTickets,
   k01Persons,
+  k01AuditLogs,
 } from '../db/schema.js';
 
 export type ExternalProvider = 'google' | 'apple';
@@ -246,6 +247,21 @@ export class OAuthService {
     if (!subject) throw new Error('EXTERNAL_IDENTITY_INVALID');
     const partyId = await this.resolveParty(provider, subject, email, emailVerified);
     const ticket = await this.issueTicket(partyId, provider);
+    const db = (await getDatabase()) as any;
+    const people = await db.select().from(k01Persons).where(eq(k01Persons.id, partyId));
+    const person = people[0];
+    await db.insert(k01AuditLogs).values({
+      id: `audit-oauth-${crypto.randomUUID()}`,
+      actorId: partyId,
+      actorName: person ? `${person.firstName} ${person.lastName}` : partyId,
+      action: 'EXTERNAL_IDENTITY_VERIFIED',
+      targetType: 'auth_external_identity',
+      targetId: partyId,
+      targetName: provider,
+      description: `تایید هویت خارجی از طریق ${provider}؛ بدون اعطای نقش یا مجوز.`,
+      changes: { provider },
+      timestamp: new Date(),
+    });
     const redirect = new URL(stateRow.returnUrl);
     redirect.searchParams.set('oauth_ticket', ticket);
     redirect.searchParams.set('oauth_provider', provider);
