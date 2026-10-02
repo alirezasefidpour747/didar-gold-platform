@@ -20,6 +20,8 @@ import {
   authOtpCodes,
 } from '../db/schema.js';
 import { PersonParty, OrganizationParty, Membership } from '../../src/types/k01.js';
+import { normalizeLoginIdentifier, normalizeMobile, normalizeNationalId, normalizeOtp } from '../../src/lib/input-normalization.js';
+import { MfaService } from './mfa.service.js';
 
 export interface AuthenticatedUser {
   partyId: string;
@@ -149,6 +151,12 @@ export class AuthService {
       throw new Error('نام، نام خانوادگی و شماره موبایل الزامی است.');
     }
 
+    const normalizedMobile = normalizeMobile(params.mobile);
+    const normalizedNationalId = params.nationalId ? normalizeNationalId(params.nationalId) : undefined;
+    if (!/^09\d{9}$/.test(normalizedMobile)) {
+      throw new Error('شماره همراه معتبر با قالب 09xxxxxxxxx الزامی است.');
+    }
+
     const db = (await getDatabase()) as any;
 
     // Find or create admin person
@@ -156,7 +164,7 @@ export class AuthService {
     const existingPersons = await db
       .select()
       .from(k01Persons)
-      .where(eq(k01Persons.mobile, params.mobile));
+      .where(eq(k01Persons.mobile, normalizedMobile));
 
     if (existingPersons.length > 0) {
       person = existingPersons[0];
@@ -178,8 +186,8 @@ export class AuthService {
         partyType: 'internal_user',
         firstName: params.firstName,
         lastName: params.lastName,
-        mobile: params.mobile,
-        nationalId: params.nationalId || null,
+        mobile: normalizedMobile,
+        nationalId: normalizedNationalId || null,
         email: params.email || null,
         status: 'active',
         verificationStatus: 'verified',
@@ -187,7 +195,7 @@ export class AuthService {
         createdAt: new Date(),
         updatedAt: new Date(),
       });
-      person = { id: personId, firstName: params.firstName, lastName: params.lastName, mobile: params.mobile };
+      person = { id: personId, firstName: params.firstName, lastName: params.lastName, mobile: normalizedMobile };
     }
 
     // Find or create Root Didar Platform Organization
@@ -207,7 +215,7 @@ export class AuthService {
         legalName,
         displayName: legalName,
         organizationType: 'didar',
-        phone: params.mobile,
+        phone: normalizedMobile,
         email: params.email || null,
         status: 'active',
         verificationStatus: 'verified',
@@ -309,8 +317,8 @@ export class AuthService {
       targetType: 'auth_credentials',
       targetId: person.id,
       targetName: 'حساب مدیر ارشد',
-      description: `مقداردهی اولیه امن حساب مدیر ارشد با شماره ${params.mobile}`,
-      changes: { mobile: params.mobile, organizationId: rootOrg.id, roleKey },
+      description: `مقداردهی اولیه امن حساب مدیر ارشد`,
+      changes: { mobile: normalizedMobile, organizationId: rootOrg.id, roleKey },
       timestamp: new Date(),
     });
 
@@ -325,11 +333,14 @@ export class AuthService {
     identifier: string;
     password?: string;
     otp?: string;
+    totp?: string;
+    recoveryCode?: string;
     organizationId?: string;
     userAgent?: string;
     ipAddress?: string;
   }): Promise<LoginResult> {
-    const { identifier, password, otp, organizationId, userAgent, ipAddress } = params;
+    const { identifier, password, otp, totp, recoveryCode, organizationId, userAgent, ipAddress } = params;
+    const normalizedIdentifier = normalizeLoginIdentifier(identifier);
 
     if (!identifier) {
       throw new Error('شناسه کاربری (شماره موبایل یا کدملی) الزامی است.');
@@ -346,7 +357,7 @@ export class AuthService {
       .select()
       .from(k01Persons)
       .where(
-        sql`${k01Persons.mobile} = ${identifier} OR ${k01Persons.nationalId} = ${identifier} OR ${k01Persons.id} = ${identifier} OR ${k01Persons.email} = ${identifier}`
+        sql`${k01Persons.mobile} = ${normalizedIdentifier} OR ${k01Persons.nationalId} = ${normalizedIdentifier} OR ${k01Persons.id} = ${normalizedIdentifier} OR lower(${k01Persons.email}) = ${normalizedIdentifier.toLowerCase()}`
       );
 
     if (persons.length === 0) {
@@ -399,7 +410,7 @@ export class AuthService {
         .where(eq(authCredentials.partyId, person.id));
     } else if (otp) {
       // Verify OTP
-      const otpCodeHash = crypto.createHash('sha256').update(otp).digest('hex');
+      const otpCodeHash = crypto.createHash('sha256').update(normalizeOtp(otp)).digest('hex');
       const otps = await db
         .select()
         .from(authOtpCodes)
@@ -423,6 +434,12 @@ export class AuthService {
         .where(eq(authOtpCodes.id, otps[0].id));
     }
 
+    // Password login may be protected with an enrolled Authenticator factor.
+    // SMS OTP remains an independent approved authentication method.
+    if (password) {
+      await MfaService.verifyLoginFactor(person.id, totp, recoveryCode);
+    }
+
     // Resolve Active Organization
     const activeOrgId = await this.resolveTargetOrganization(person.id, organizationId);
 
@@ -435,7 +452,8 @@ export class AuthService {
    */
   static async requestOtp(mobile: string): Promise<{ success: boolean; message: string; debugCode?: string }> {
     const db = (await getDatabase()) as any;
-    const persons = await db.select().from(k01Persons).where(eq(k01Persons.mobile, mobile));
+    const normalizedMobile = normalizeMobile(mobile);
+    const persons = await db.select().from(k01Persons).where(eq(k01Persons.mobile, normalizedMobile));
     if (persons.length === 0) {
       throw new Error('کاربری با این شماره موبایل در سیستم یافت نشد.');
     }
@@ -448,7 +466,7 @@ export class AuthService {
     const otpId = `otp-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
     await db.insert(authOtpCodes).values({
       id: otpId,
-      mobile,
+      mobile: normalizedMobile,
       codeHash,
       expiresAt,
       attempts: 0,
@@ -456,13 +474,13 @@ export class AuthService {
       createdAt: new Date(),
     });
 
-    console.log(`[AUTH OTP] Code generated for ${mobile}: ${code} (Expires in 5m)`);
+    // OTP secret is intentionally never logged.
 
     const isDevelopment = process.env.NODE_ENV !== 'production';
     return {
       success: true,
       message: 'کد تایید یکبارمصرف پیامک شد.',
-      debugCode: isDevelopment ? code : undefined,
+      debugCode: isDevelopment && process.env.ALLOW_DEV_OTP_DEBUG === 'true' ? code : undefined,
     };
   }
 
@@ -588,6 +606,25 @@ export class AuthService {
         expiresAt: sess.expiresAt instanceof Date ? sess.expiresAt.toISOString() : String(sess.expiresAt),
       },
     };
+  }
+
+  /**
+   * Create a normal application session after a trusted external identity flow.
+   * External providers never supply organization scope, roles, or permissions.
+   */
+  static async createSessionForParty(
+    partyId: string,
+    requestedOrganizationId?: string,
+    userAgent?: string,
+    ipAddress?: string
+  ): Promise<LoginResult> {
+    const db = (await getDatabase()) as any;
+    const persons = await db.select().from(k01Persons).where(eq(k01Persons.id, partyId));
+    if (!persons[0] || persons[0].status !== 'active') {
+      throw new Error('ACCOUNT_INACTIVE');
+    }
+    const activeOrgId = await this.resolveTargetOrganization(partyId, requestedOrganizationId);
+    return this.createSession(partyId, activeOrgId, userAgent, ipAddress);
   }
 
   /**
