@@ -62,10 +62,10 @@ async function startServer() {
       await getDatabase();
       await runMigrations();
       const { importRbacData } = await import('./server/db/import.js');
-      await importRbacData().catch((e) => console.warn('[RBAC Import]', e.message));
+      await importRbacData();
       const { seedP01Data } = await import('./server/db/p01-seed.js');
       await seedP01Data().catch((e) => console.warn('[P01 Seed]', e.message));
-      console.log('[PostgreSQL] Database connected, migrations verified, RBAC & P01 seed initialized.');
+      console.log('[PostgreSQL] Database connected, migrations verified, canonical RBAC catalog & P01 seed initialized.');
       dbStatus = 'connected';
     } catch (err: any) {
       dbStatus = 'error';
