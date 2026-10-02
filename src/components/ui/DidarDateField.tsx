@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react';
-import { isoDateToJalali, jalaliToIsoDate, normalizeDigits, toPersianDigits } from '../../lib/input-normalization.js';
+import { isoDateToJalali, jalaliMonthLength, jalaliToIsoDate, normalizeDigits, toPersianDigits } from '../../lib/input-normalization.js';
 
 interface DidarDateFieldProps {
   value: string; // canonical YYYY-MM-DD
@@ -49,7 +49,7 @@ export const DidarDateField: React.FC<DidarDateFieldProps> = ({
     }
   };
 
-  const daysInMonth = cursor.m <= 6 ? 31 : cursor.m <= 11 ? 30 : 29;
+  const daysInMonth = jalaliMonthLength(cursor.y, cursor.m);
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
 
   const selectDay = (day: number) => {
