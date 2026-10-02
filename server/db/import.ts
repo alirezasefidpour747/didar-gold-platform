@@ -465,11 +465,25 @@ export async function importK01Data() {
 }
 
 export async function importRbacData() {
-  const rep = await importData();
+  // IMPORTANT: normal startup/provisioning must seed definitions only.
+  // Legacy JSON identity/assignment import remains available only through explicit importData()/db:import.
+  const { seedCanonicalRbacCatalog } = await import('./rbac-seed.js');
+  const result = await seedCanonicalRbacCatalog();
   return {
     success: true,
-    counts: rep.rbac.postCounts,
-    report: rep.rbac,
+    counts: {
+      roles: result.counts.roles,
+      permissions: result.counts.permissions,
+      rolePermissions: result.counts.rolePermissions,
+      assignments: 0,
+      policyRevisions: 0,
+      grantAuthorityRules: result.counts.grantAuthorityRules,
+    },
+    report: {
+      source: 'source-controlled canonical RBAC catalog',
+      identitiesImported: 0,
+      assignmentsImported: 0,
+    },
   };
 }
 

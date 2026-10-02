@@ -8,6 +8,7 @@ import { useI18n, SupportedLocale } from '../../lib/i18n.js';
 import { ShieldCheck, RefreshCw, Download, Globe, UserCheck, Layers, Database, LogOut } from 'lucide-react';
 import { SupabaseStatusModal } from '../k01/SupabaseStatusModal.js';
 import { WorkspaceSwitcher } from './WorkspaceSwitcher.js';
+import { AccountSecurityModal } from '../auth/AccountSecurityModal.js';
 import { api, onAuthStateChange } from '../../lib/api.js';
 import { AuthSessionData } from '../../types/auth.js';
 
@@ -28,6 +29,7 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const { t, locale, setLocale } = useI18n();
   const [isSupabaseModalOpen, setIsSupabaseModalOpen] = useState(false);
+  const [isSecurityModalOpen, setIsSecurityModalOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState<AuthSessionData | null>(null);
 
   useEffect(() => {
@@ -187,6 +189,16 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           </div>
 
+          {/* Account Security */}
+          <button
+            onClick={() => setIsSecurityModalOpen(true)}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#1A202B] hover:bg-[#202A38] border border-[#3B82F6]/30 text-xs text-[#93C5FD] transition-colors"
+            title="امنیت حساب و Authenticator"
+          >
+            <ShieldCheck className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">امنیت حساب</span>
+          </button>
+
           {/* Logout Button */}
           <button
             onClick={handleLogout}
@@ -203,6 +215,10 @@ export const Header: React.FC<HeaderProps> = ({
       <SupabaseStatusModal
         isOpen={isSupabaseModalOpen}
         onClose={() => setIsSupabaseModalOpen(false)}
+      />
+      <AccountSecurityModal
+        isOpen={isSecurityModalOpen}
+        onClose={() => setIsSecurityModalOpen(false)}
       />
     </header>
   );

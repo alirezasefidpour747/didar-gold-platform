@@ -3051,14 +3051,25 @@ export const api = {
   },
 
   // Authentication & Session Management
-  login: async (identifier: string, password?: string, otp?: string, organizationId?: string): Promise<LoginResponse['data']> => {
+  login: async (
+    identifier: string,
+    password?: string,
+    otp?: string,
+    organizationId?: string,
+    totp?: string,
+    recoveryCode?: string
+  ): Promise<LoginResponse['data']> => {
     const res = await apiFetch('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ identifier, password, otp, organizationId })
+      body: JSON.stringify({ identifier, password, otp, organizationId, totp, recoveryCode })
     });
     const json = await res.json();
-    if (!res.ok) throw new Error(json.error?.message || json.message || 'خطای ورود به سامانه');
+    if (!res.ok) {
+      const error = new Error(json.error?.message || json.message || 'خطای ورود به سامانه') as Error & { code?: string };
+      error.code = json.error?.code;
+      throw error;
+    }
     setSessionToken(json.data.token);
     notifyAuthChange(json.data.session);
     return json.data;
@@ -3128,6 +3139,72 @@ export const api = {
     });
     const json = await res.json();
     if (!res.ok) throw new Error(json.error?.message || 'خطای ارسال کد یکبارمصرف');
+    return json.data;
+  },
+
+  getExternalAuthProviders: async (): Promise<{ google: boolean; apple: boolean }> => {
+    const res = await apiFetch('/api/auth/external/providers');
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error?.message || 'خطا در دریافت ارائه‌دهندگان ورود');
+    return json.data;
+  },
+
+  getOAuthStartUrl: (provider: 'google' | 'apple', returnUrl?: string): string => {
+    const query = new URLSearchParams();
+    if (returnUrl) query.set('returnUrl', returnUrl);
+    return buildApiUrl(`/api/auth/oauth/${provider}/start?${query.toString()}`);
+  },
+
+  completeOAuth: async (ticket: string, totp?: string, recoveryCode?: string): Promise<LoginResponse['data']> => {
+    const res = await apiFetch('/api/auth/oauth/complete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ticket, totp, recoveryCode })
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      const error = new Error(json.error?.message || 'خطا در تکمیل ورود اجتماعی') as Error & { code?: string };
+      error.code = json.error?.code;
+      throw error;
+    }
+    setSessionToken(json.data.token);
+    notifyAuthChange(json.data.session);
+    return json.data;
+  },
+
+  getMfaStatus: async (): Promise<{ totpEnabled: boolean; totpPending: boolean; confirmedAt?: string | null }> => {
+    const res = await apiFetch('/api/auth/mfa/status');
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error?.message || 'خطا در دریافت وضعیت امنیت حساب');
+    return json.data;
+  },
+
+  beginTotpEnrollment: async (): Promise<{ secret: string; otpauthUri: string }> => {
+    const res = await apiFetch('/api/auth/mfa/totp/begin', { method: 'POST' });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error?.message || 'خطا در شروع فعال‌سازی Authenticator');
+    return json.data;
+  },
+
+  confirmTotpEnrollment: async (code: string): Promise<{ enabled: boolean; recoveryCodes: string[] }> => {
+    const res = await apiFetch('/api/auth/mfa/totp/confirm', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code })
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error?.message || 'کد Authenticator نامعتبر است');
+    return json.data;
+  },
+
+  disableTotp: async (code: string): Promise<{ disabled: boolean }> => {
+    const res = await apiFetch('/api/auth/mfa/totp/disable', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code })
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error?.message || 'خطا در غیرفعال‌سازی Authenticator');
     return json.data;
   },
 
