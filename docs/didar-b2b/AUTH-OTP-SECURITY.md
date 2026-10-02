@@ -944,3 +944,60 @@ Publish/Rollback/Schedule.
 
 CMS rendering never bypasses Product visibility or exposes internal B2B
 data.
+
+
+---
+
+## Owner-approved Social Login & Authenticator Extension — 2026-10-02
+
+This explicit owner decision brings the following into current authentication scope and overrides the earlier omission of social identity and authenticator-app MFA.
+
+### External identity providers
+
+Approved initial providers:
+
+```text
+GOOGLE
+APPLE
+```
+
+Google/Apple authenticate identity only. They never provide Didar organization, role, permission or resource scope.
+
+Authorization remains:
+
+```text
+External Identity
+→ Didar Party
+→ Active Membership
+→ Organization Context
+→ Role
+→ Permission
+→ Resource / Workflow State
+```
+
+An external identity may auto-link only when the provider supplies a verified email and that email resolves to exactly one active Didar Party. Ambiguous or unknown identities fail closed.
+
+OAuth uses state protection and PKCE where supported. Provider credentials remain deployment secrets and are never committed.
+
+### TOTP Authenticator MFA
+
+TOTP is an approved MFA factor alongside SMS OTP.
+
+Compatible applications include Google Authenticator, Microsoft Authenticator, 1Password and other RFC-compatible TOTP applications.
+
+Rules:
+
+- 6 digits, 30-second period, HMAC-SHA1 interoperability.
+- Secret encrypted at rest using a deployment-provided MFA encryption key.
+- Secret never logged or exposed in reports.
+- Enrollment requires code confirmation before activation.
+- Recovery codes are one-time, hashed at rest and displayed only once after enrollment.
+- Password login for a user with active TOTP requires the TOTP/recovery factor before a session is issued.
+- SMS OTP remains an independent approved authentication method in the current phase.
+- Social login uses a one-time Didar ticket; if TOTP is active, the ticket cannot create a session until MFA succeeds.
+- Disabling TOTP requires a currently valid TOTP code and is auditable in later security-audit hardening.
+
+### Provider configuration
+
+Google and Apple buttons are operational only when the corresponding server-side environment configuration is complete. A missing provider secret must fail closed and must not produce a mock success.
+
