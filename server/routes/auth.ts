@@ -8,6 +8,8 @@ import { Router, Request, Response } from 'express';
 import { AuthService } from '../services/auth.service.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { RbacService } from '../storage-rbac.js';
+import { MfaService } from '../services/mfa.service.js';
+import { OAuthService, ExternalProvider } from '../services/oauth.service.js';
 
 export const authRouter = Router();
 
@@ -66,7 +68,7 @@ authRouter.post('/setup-admin', async (req: Request, res: Response) => {
 // POST /api/auth/login - Authenticate with mobile/nationalId and password or OTP
 authRouter.post('/login', async (req: Request, res: Response) => {
   try {
-    const { identifier, password, otp, organizationId } = req.body;
+    const { identifier, password, otp, totp, recoveryCode, organizationId } = req.body;
     const userAgent = req.headers['user-agent'];
     const ipAddress = req.ip || (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress;
 
@@ -74,6 +76,8 @@ authRouter.post('/login', async (req: Request, res: Response) => {
       identifier,
       password,
       otp,
+      totp,
+      recoveryCode,
       organizationId,
       userAgent,
       ipAddress,
@@ -90,18 +94,26 @@ authRouter.post('/login', async (req: Request, res: Response) => {
     const isLocked = message.includes('ACCOUNT_LOCKED');
     const isInactive = message.includes('ACCOUNT_INACTIVE');
     const isForbiddenOrg = message.includes('FORBIDDEN_ORG');
+    const isMfaRequired = message.includes('MFA_REQUIRED');
+    const isInvalidTotp = message.includes('INVALID_TOTP') || message.includes('INVALID_RECOVERY_CODE');
 
-    const status = isLocked ? 423 : isForbiddenOrg ? 403 : isInvalidCreds ? 401 : 400;
+    const status = isMfaRequired ? 428 : isLocked ? 423 : isForbiddenOrg ? 403 : (isInvalidCreds || isInvalidTotp) ? 401 : 400;
 
     res.status(status).json({
       success: false,
       error: {
-        code: isLocked
+        code: isMfaRequired
+          ? 'MFA_REQUIRED'
+          : isInvalidTotp
+          ? 'INVALID_MFA'
+          : isLocked
           ? 'ACCOUNT_LOCKED'
           : isForbiddenOrg
           ? 'FORBIDDEN_ORG'
           : isInvalidCreds
           ? 'INVALID_CREDENTIALS'
+          : isInactive
+          ? 'ACCOUNT_INACTIVE'
           : 'LOGIN_FAILED',
         message,
       },
@@ -211,6 +223,109 @@ authRouter.post('/switch-organization', authenticate, async (req: Request, res: 
     const message = err instanceof Error ? err.message : 'خطای تغییر سازمان زمینه کاری';
     const isForbidden = message.includes('FORBIDDEN_ORG');
     res.status(isForbidden ? 403 : 400).json({ success: false, error: { message } });
+  }
+});
+
+// GET /api/auth/external/providers - discover configured social providers
+authRouter.get('/external/providers', (_req: Request, res: Response) => {
+  res.json({ success: true, data: OAuthService.providerStatus() });
+});
+
+// GET /api/auth/oauth/:provider/start - begin Google/Apple authorization
+authRouter.get('/oauth/:provider/start', async (req: Request, res: Response) => {
+  try {
+    const provider = String(req.params.provider) as ExternalProvider;
+    if (!['google', 'apple'].includes(provider)) {
+      return res.status(404).json({ success: false, error: { code: 'UNKNOWN_PROVIDER', message: 'ارائه‌دهنده ورود پشتیبانی نمی‌شود.' } });
+    }
+    const url = await OAuthService.begin(provider, req.query.returnUrl ? String(req.query.returnUrl) : undefined);
+    return res.redirect(url);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'خطای شروع ورود اجتماعی';
+    return res.status(400).json({ success: false, error: { code: message, message } });
+  }
+});
+
+async function handleOAuthCallback(req: Request, res: Response) {
+  const provider = String(req.params.provider) as ExternalProvider;
+  const code = String(req.query.code || req.body?.code || '');
+  const state = String(req.query.state || req.body?.state || '');
+  const idToken = String(req.query.id_token || req.body?.id_token || '');
+  try {
+    if (!['google', 'apple'].includes(provider) || !code || !state) throw new Error('OAUTH_CALLBACK_INVALID');
+    const redirectUrl = await OAuthService.callback(provider, { code, state, idToken: idToken || undefined });
+    return res.redirect(redirectUrl);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'OAUTH_CALLBACK_FAILED';
+    const fallback = new URL(process.env.APP_URL || 'http://localhost:3000/');
+    fallback.searchParams.set('oauth_error', message);
+    return res.redirect(fallback.toString());
+  }
+}
+
+authRouter.get('/oauth/:provider/callback', handleOAuthCallback);
+authRouter.post('/oauth/:provider/callback', handleOAuthCallback);
+
+// POST /api/auth/oauth/complete - exchange one-time provider ticket for a normal Didar session
+authRouter.post('/oauth/complete', async (req: Request, res: Response) => {
+  try {
+    const { ticket, totp, recoveryCode, organizationId } = req.body || {};
+    if (!ticket) return res.status(400).json({ success: false, error: { code: 'OAUTH_TICKET_REQUIRED', message: 'توکن موقت ورود اجتماعی الزامی است.' } });
+    const ticketRow = await OAuthService.resolveTicket(String(ticket));
+    await MfaService.verifyLoginFactor(ticketRow.partyId, totp, recoveryCode);
+    const userAgent = req.headers['user-agent'];
+    const ipAddress = req.ip || (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress;
+    const result = await AuthService.createSessionForParty(ticketRow.partyId, organizationId, userAgent, ipAddress);
+    await OAuthService.consumeTicket(ticketRow.id);
+    return res.json({ success: true, message: 'ورود اجتماعی با موفقیت انجام شد.', data: result });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'OAUTH_COMPLETE_FAILED';
+    const mfaRequired = message.includes('MFA_REQUIRED');
+    const invalidMfa = message.includes('INVALID_TOTP') || message.includes('INVALID_RECOVERY_CODE');
+    return res.status(mfaRequired ? 428 : invalidMfa ? 401 : 400).json({
+      success: false,
+      error: { code: mfaRequired ? 'MFA_REQUIRED' : invalidMfa ? 'INVALID_MFA' : message, message },
+    });
+  }
+});
+
+// GET /api/auth/mfa/status
+authRouter.get('/mfa/status', authenticate, async (req: Request, res: Response) => {
+  const data = await MfaService.getStatus(req.user!.partyId);
+  res.json({ success: true, data });
+});
+
+// POST /api/auth/mfa/totp/begin
+authRouter.post('/mfa/totp/begin', authenticate, async (req: Request, res: Response) => {
+  try {
+    const label = req.user!.person.email || req.user!.person.mobile || req.user!.partyId;
+    const data = await MfaService.beginTotpEnrollment(req.user!.partyId, label);
+    res.json({ success: true, data });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'TOTP_ENROLLMENT_FAILED';
+    res.status(message.includes('MFA_ENCRYPTION_KEY') ? 503 : 400).json({ success: false, error: { code: message, message } });
+  }
+});
+
+// POST /api/auth/mfa/totp/confirm
+authRouter.post('/mfa/totp/confirm', authenticate, async (req: Request, res: Response) => {
+  try {
+    const data = await MfaService.confirmTotpEnrollment(req.user!.partyId, String(req.body?.code || ''));
+    res.json({ success: true, data });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'TOTP_CONFIRM_FAILED';
+    res.status(400).json({ success: false, error: { code: message, message } });
+  }
+});
+
+// POST /api/auth/mfa/totp/disable
+authRouter.post('/mfa/totp/disable', authenticate, async (req: Request, res: Response) => {
+  try {
+    const data = await MfaService.disableTotp(req.user!.partyId, String(req.body?.code || ''));
+    res.json({ success: true, data });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'TOTP_DISABLE_FAILED';
+    res.status(400).json({ success: false, error: { code: message, message } });
   }
 });
 
