@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import { and, eq, isNull } from 'drizzle-orm';
 import { getDatabase } from '../db/index.js';
-import { authRecoveryCodes, authTotpFactors } from '../db/schema.js';
+import { authRecoveryCodes, authTotpFactors, k01AuditLogs, k01Persons } from '../db/schema.js';
 import { normalizeOtp } from '../../src/lib/input-normalization.js';
 
 const BASE32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
@@ -97,6 +97,24 @@ function createRecoveryCodes(count = 10): string[] {
   });
 }
 
+async function auditMfaEvent(partyId: string, action: string, description: string) {
+  const db = (await getDatabase()) as any;
+  const people = await db.select().from(k01Persons).where(eq(k01Persons.id, partyId));
+  const person = people[0];
+  await db.insert(k01AuditLogs).values({
+    id: `audit-mfa-${crypto.randomUUID()}`,
+    actorId: partyId,
+    actorName: person ? `${person.firstName} ${person.lastName}` : partyId,
+    action,
+    targetType: 'auth_mfa',
+    targetId: partyId,
+    targetName: 'Authenticator MFA',
+    description,
+    changes: { factorType: 'TOTP' },
+    timestamp: new Date(),
+  });
+}
+
 export class MfaService {
   static async getStatus(partyId: string) {
     const db = (await getDatabase()) as any;
@@ -164,6 +182,7 @@ export class MfaService {
       }
     });
 
+    await auditMfaEvent(partyId, 'MFA_TOTP_ENABLED', 'فعال‌سازی عامل Authenticator پس از تایید کد معتبر.');
     return { enabled: true, recoveryCodes };
   }
 
@@ -211,6 +230,7 @@ export class MfaService {
       await tx.update(authTotpFactors).set({ status: 'disabled', updatedAt: new Date() }).where(eq(authTotpFactors.partyId, partyId));
       await tx.delete(authRecoveryCodes).where(eq(authRecoveryCodes.partyId, partyId));
     });
+    await auditMfaEvent(partyId, 'MFA_TOTP_DISABLED', 'غیرفعال‌سازی عامل Authenticator با تایید کد فعلی.');
     return { disabled: true };
   }
 }
