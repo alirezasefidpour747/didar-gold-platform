@@ -21,6 +21,7 @@ import {
   AuditEvent,
   K01DataPayload,
 } from '../../src/types/k01.js';
+import { normalizeMobile, normalizeNationalId } from '../../src/lib/input-normalization.js';
 
 export class K01Repository {
   /**
@@ -72,20 +73,21 @@ export class K01Repository {
 
   static async getPersonByMobile(mobile: string): Promise<PersonParty | null> {
     const db = (await getDatabase()) as any;
-    const res = await db.select().from(k01Persons).where(eq(k01Persons.mobile, mobile));
+    const res = await db.select().from(k01Persons).where(eq(k01Persons.mobile, normalizeMobile(mobile)));
     if (res.length === 0) return null;
     return this.mapPersonFromDb(res[0]);
   }
 
   static async getPersonByNationalId(nationalId: string): Promise<PersonParty | null> {
     const db = (await getDatabase()) as any;
-    const res = await db.select().from(k01Persons).where(eq(k01Persons.nationalId, nationalId));
+    const res = await db.select().from(k01Persons).where(eq(k01Persons.nationalId, normalizeNationalId(nationalId)));
     if (res.length === 0) return null;
     return this.mapPersonFromDb(res[0]);
   }
 
   static async createPerson(person: PersonParty, audit?: AuditEvent): Promise<PersonParty> {
     const db = (await getDatabase()) as any;
+    person = { ...person, mobile: normalizeMobile(person.mobile), nationalId: person.nationalId ? normalizeNationalId(person.nationalId) : person.nationalId };
 
     // Check unique constraints
     const existingMobile = await this.getPersonByMobile(person.mobile);
@@ -143,6 +145,7 @@ export class K01Repository {
 
   static async updatePerson(id: string, updates: Partial<PersonParty>, audit?: AuditEvent): Promise<PersonParty> {
     const db = (await getDatabase()) as any;
+    updates = { ...updates, ...(updates.mobile !== undefined ? { mobile: normalizeMobile(String(updates.mobile)) } : {}), ...(updates.nationalId !== undefined && updates.nationalId !== null ? { nationalId: normalizeNationalId(String(updates.nationalId)) } : {}) };
     const existing = await this.getPersonById(id);
     if (!existing) {
       throw new Error(`شخص با شناسه ${id} یافت نشد.`);
