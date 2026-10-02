@@ -1,7 +1,7 @@
 # Input, Date, Social Login & MFA Foundation
 
 Date: 2026-10-02
-Status: IMPLEMENTED ON FEATURE BRANCH — verification pending runtime test
+Status: IMPLEMENTED — CI VERIFIED; owner local runtime verification pending
 Branch: `feature/input-date-social-mfa-foundation`
 
 ## Scope implemented
@@ -58,4 +58,24 @@ Covers:
 - Jalali/Gregorian round trip.
 - RFC 6238 compatible TOTP generation and Persian-digit verification.
 
-Final test/build evidence will be appended after execution.
+GitHub Actions verification run:
+
+`Verify Input Auth Foundation / run #2`
+
+Results:
+- Dependency install: PASS
+- TypeScript / `npm run lint`: PASS
+- Foundation tests: PASS (6/6)
+- Full suite: PASS (47/47 = 17 persistence + 24 P01 + 6 foundation)
+- Production build: PASS
+- Migration `0004_auth_identity_mfa.sql`: applied successfully in isolated test databases
+- P01 regression suite: PASS (24/24)
+
+The first CI run exposed the pre-existing unsafe RBAC bootstrap dependency on local JSON files. That root cause was corrected by adding source-controlled canonical RBAC catalog seeding and isolating `importRbacData()` from legacy K01 identity import. The second CI run is fully green.
+
+Remaining acceptance before merge:
+- owner-local macOS runtime smoke test
+- visual verification of password eye and Jalali date controls
+- TOTP enrollment/login smoke test with a real authenticator app
+- Google/Apple live login only after valid provider credentials are configured
+
