@@ -140,9 +140,10 @@ async function main() {
   children.push(frontendProc);
 }
 
-function cleanup(signal: string) {
+function cleanup(signal: string, exitCode = 0) {
   if (shuttingDown) return;
   shuttingDown = true;
+  process.exitCode = exitCode;
   console.log(`\n🛑 [Didar Gold] Received ${signal}. Shutting down all services gracefully...`);
 
   for (const child of children) {
@@ -155,7 +156,7 @@ function cleanup(signal: string) {
     }
   }
 
-  const deadline = setTimeout(() => process.exit(0), 2500);
+  const deadline = setTimeout(() => process.exit(exitCode), 2500);
   deadline.unref();
 }
 
@@ -164,6 +165,5 @@ process.once('SIGTERM', () => cleanup('SIGTERM'));
 
 main().catch((err) => {
   console.error('[Didar Gold Runner] Fatal startup error:', err);
-  cleanup('startup failure');
-  process.exitCode = 1;
+  cleanup('startup failure', 1);
 });
