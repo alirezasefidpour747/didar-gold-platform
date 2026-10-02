@@ -1,0 +1,44 @@
+name: Verify Input Auth Foundation
+
+on:
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Typecheck, Test & Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NODE_ENV: test
+      PGDATA_TEST: /tmp/didar-foundation-ci
+      MFA_ENCRYPTION_KEY: ci-only-foundation-key-not-for-production-2026
+      ALLOW_DEV_OTP_DEBUG: "false"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Typecheck
+        run: npm run lint
+
+      - name: Foundation tests
+        run: npm run test:foundation
+
+      - name: Full test suite
+        run: npm test
+
+      - name: Production build
+        run: npm run build
