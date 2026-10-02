@@ -241,3 +241,62 @@ and clear Draft/Preview/Published state.
 
 Do not expose arbitrary executable JavaScript or uncontrolled CSS/HTML
 as a substitute for structured Blocks.
+
+
+---
+
+## Owner-approved Input & Date Foundation — 2026-10-02
+
+This decision supersedes any weaker field-by-field behavior.
+
+### Canonical numeric input
+
+All numeric and identifier inputs must accept Persian, Arabic-Indic and ASCII digits in the UI and normalize to ASCII before persistence.
+
+Examples:
+
+```text
+۰۹۱۲۱۱۱۲۲۳۳
+٠٩١٢١١١٢٢٣٣
+09121112233
+→ 09121112233
+```
+
+This applies, according to field semantics, to mobile, national ID, postal code, OTP, quantities, weights, percentages, money and manually typed dates.
+
+Identifiers remain strings; leading zeroes must not be lost.
+
+Password, tokens, opaque IDs and free text MUST NOT be digit-normalized.
+
+Frontend normalization is UX only. Backend/repository normalization remains authoritative before database persistence.
+
+### Shared field controls
+
+New forms should use shared controls rather than raw ad-hoc inputs where applicable:
+
+```text
+IdentifierField
+NumericField
+PasswordField
+DidarDateField
+```
+
+### Date/calendar standard
+
+Canonical persisted date = Gregorian ISO `YYYY-MM-DD`.
+Canonical timestamp = ISO timestamp with timezone semantics.
+
+Presentation is localized:
+
+```text
+fa → Persian/Jalali calendar presentation
+en/fr → Gregorian localized presentation
+ar → Gregorian localized presentation unless a later owner decision changes calendar policy
+```
+
+Persian date typing may use Persian or ASCII digits. The UI converts to canonical Gregorian ISO before API submission; backend remains responsible for validation.
+
+### Password UX
+
+All password controls use a shared PasswordField with show/hide eye control, correct autocomplete semantics and no password normalization, trimming, logging or analytics capture.
+
