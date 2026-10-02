@@ -3,6 +3,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { DidarDateField } from '../ui/DidarDateField.js';
 import { Membership, Party, Organization, MembershipAuthority, MembershipRoleKey, EntityStatus } from '../../types/k01.js';
 import { RoleDefinition, RoleCategory } from '../../types/rbac.js';
 import { api } from '../../lib/api.js';
@@ -44,7 +45,7 @@ export const MembershipFormModal: React.FC<MembershipFormModalProps> = ({
   preselectedPersonId,
   preselectedOrgId
 }) => {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
 
   const [partyId, setPartyId] = useState('');
   const [organizationId, setOrganizationId] = useState('');
@@ -368,22 +369,20 @@ export const MembershipFormModal: React.FC<MembershipFormModalProps> = ({
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
             <div>
               <label className="block text-xs text-[#9E9EA8] mb-1">تاریخ شروع اعتبار *</label>
-              <input
-                type="date"
+              <DidarDateField
                 required
                 value={validFrom}
-                onChange={e => setValidFrom(e.target.value)}
-                className="w-full bg-[#121218] border border-[#2C2C3C] rounded-xl px-3 py-2 text-xs text-[#EDEDED] outline-none font-mono"
+                onChange={setValidFrom}
+                locale={locale}
               />
             </div>
 
             <div>
               <label className="block text-xs text-[#9E9EA8] mb-1">تاریخ پایان اعتبار (اختیاری)</label>
-              <input
-                type="date"
+              <DidarDateField
                 value={validTo}
-                onChange={e => setValidTo(e.target.value)}
-                className="w-full bg-[#121218] border border-[#2C2C3C] rounded-xl px-3 py-2 text-xs text-[#EDEDED] outline-none font-mono"
+                onChange={setValidTo}
+                locale={locale}
               />
             </div>
 
