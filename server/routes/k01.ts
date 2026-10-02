@@ -8,7 +8,7 @@ import { Router, Request, Response } from 'express';
 import { K01Repository } from '../repositories/k01.repository.js';
 import { checkDatabaseHealth, createIndependentBackup } from '../lib/database.js';
 import { AuditEvent } from '../../src/types/k01.js';
-import { normalizeMobile, normalizeNationalId, jalaliToIsoDate, normalizeDigits } from '../../src/lib/input-normalization.js';
+import { normalizeMobile, normalizeNationalId, normalizeDateToIso } from '../../src/lib/input-normalization.js';
 
 export const k01Router = Router();
 
@@ -182,6 +182,21 @@ k01Router.post('/', async (req: Request, res: Response) => {
     }
 
     if (resource === 'membership') {
+      if (payload.validFrom) {
+        const normalized = normalizeDateToIso(String(payload.validFrom));
+        if (!normalized) {
+          return res.status(422).json({ error: { code: 'VALIDATION_FAILED', message: 'تاریخ شروع اعتبار معتبر نیست.' } });
+        }
+        payload.validFrom = normalized;
+      }
+      if (payload.validTo) {
+        const normalized = normalizeDateToIso(String(payload.validTo));
+        if (!normalized) {
+          return res.status(422).json({ error: { code: 'VALIDATION_FAILED', message: 'تاریخ پایان اعتبار معتبر نیست.' } });
+        }
+        payload.validTo = normalized;
+      }
+
       if (!payload.partyId || !payload.organizationId) {
         return res.status(400).json({
           error: { code: 'VALIDATION_FAILED', message: 'مشخص کردن شخص و سازمان برای برقراری رابطه عضویت الزامی است.' },
@@ -329,8 +344,8 @@ k01Router.patch('/:resource/:id', async (req: Request, res: Response) => {
     if (resource === 'membership' || resource === 'memberships') {
       for (const key of ['validFrom', 'validTo'] as const) {
         const raw = updates[key];
-        if (raw && typeof raw === 'string' && raw.includes('/')) {
-          const iso = jalaliToIsoDate(normalizeDigits(raw));
+        if (raw && typeof raw === 'string') {
+          const iso = normalizeDateToIso(raw);
           if (!iso) return res.status(422).json({ error: { code: 'VALIDATION_FAILED', message: `تاریخ ${key} معتبر نیست.` } });
           updates[key] = iso;
         }
