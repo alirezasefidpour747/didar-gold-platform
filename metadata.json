@@ -1,0 +1,6 @@
+{
+  "name": "Didar Gold",
+  "description": "سامانه مدیریت زنجیره ارزش صنعت طلا دیدار - معماری ۳ لایه شامل پلتفرم زیرساخت (PaaS & EventMesh)، ۲۰ هسته بنیادین زنجیره ارزش (K01 تا K20)، داده‌های پایه (MDM) و هوش تجاری کلان (Business Intelligence & Risk Analytics)",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
