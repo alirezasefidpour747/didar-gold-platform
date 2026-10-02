@@ -134,6 +134,19 @@ function d2j(jdn: number) {
   return { jy, jm, jd };
 }
 
+export function jalaliMonthLength(jy: number, jm: number): number {
+  if (jm >= 1 && jm <= 6) return 31;
+  if (jm >= 7 && jm <= 11) return 30;
+  if (jm === 12) {
+    try {
+      return jalCal(jy).leap === 0 ? 30 : 29;
+    } catch {
+      return 29;
+    }
+  }
+  return 0;
+}
+
 export function jalaliToIsoDate(input: string): string | null {
   const raw = normalizeDigits(input).trim().replace(/[-.]/g, '/');
   const match = raw.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})$/);
@@ -141,7 +154,7 @@ export function jalaliToIsoDate(input: string): string | null {
   const jy = Number(match[1]);
   const jm = Number(match[2]);
   const jd = Number(match[3]);
-  if (jm < 1 || jm > 12 || jd < 1 || jd > 31 || (jm > 6 && jd > 30)) return null;
+  if (jm < 1 || jm > 12 || jd < 1 || jd > jalaliMonthLength(jy, jm)) return null;
   try {
     const { gy, gm, gd } = d2g(j2d(jy, jm, jd));
     return `${String(gy).padStart(4, '0')}-${String(gm).padStart(2, '0')}-${String(gd).padStart(2, '0')}`;
@@ -159,4 +172,14 @@ export function isoDateToJalali(iso: string): string {
 
 export function toPersianDigits(value: string | number): string {
   return String(value).replace(/\d/g, (d) => PERSIAN_DIGITS[Number(d)]);
+}
+
+export function normalizeDateToIso(value: string): string | null {
+  const raw = normalizeDigits(String(value ?? '')).trim();
+  if (!raw) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    const date = new Date(`${raw}T00:00:00Z`);
+    return Number.isNaN(date.getTime()) ? null : raw;
+  }
+  return jalaliToIsoDate(raw);
 }
